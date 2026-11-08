@@ -662,6 +662,13 @@ uint16_t MgGen1Battery::handle_pid(uint16_t pid, uint32_t value, const uint8_t* 
       break;
     case POLL_BATTERY_ECU_HW_NUMBER:
       memcpy(pid_ecu_hw_number, data, length > sizeof(pid_ecu_hw_number) ? sizeof(pid_ecu_hw_number) : length);
+      // Fallback identification: some MG ZS 44.5kWh BMSes (e.g. SW 1027630EU4)
+      // never answer the B18C NSTC serial request, so batteryType stays 0.
+      // They do report "ZS11E" here, which identifies the ZS 44.5kWh NMC pack.
+      if (batteryType == 0 && length >= 5 && memcmp(data, "ZS11E", 5) == 0) {
+        logging.println("[MG] B18C not answered; identified from ECU HW number ZS11E");
+        got_battery_type(BATTERY_TYPE_MG_ZS_44_NMC);
+      }
       break;
     case 0xF120:
       memcpy(pid_f120, data, length > sizeof(pid_f120) ? sizeof(pid_f120) : length);
