@@ -165,6 +165,14 @@ static void print_chars_or_hex(char* buf, const uint8_t* data, uint16_t length) 
   buf[ptr] = '\0';
 }
 
+uint32_t MgGen1Battery::seen_cell_sum_mV() {
+  uint32_t sum = 0;
+  for (int n = 0; n < seen_cell_count && n < MAX_AMOUNT_CELLS; n++) {
+    sum += seen_cell_mV[n];
+  }
+  return sum;
+}
+
 String MgGen1Battery::get_uds_info_html() {
   String ret = String();
   ret.reserve(512);  //Pre-allocate some memory to avoid fragmentation
@@ -208,13 +216,10 @@ String MgGen1Battery::get_uds_info_html() {
   ret += buf;
 
   // Voltage comparison: BMS diagnostic voltages vs the sum of all cell voltages.
-  uint32_t cell_sum_mV = 0;
-  for (int n = 0; n < datalayer_battery->info.number_of_cells && n < MAX_AMOUNT_CELLS; n++) {
-    cell_sum_mV += datalayer_battery->status.cell_voltages_mV[n];
-  }
+  uint32_t cell_sum_mV = seen_cell_sum_mV();
   ret += "<br>Cell sum: ";
-  sprintf(buf, "%u.%03u V (%u cells)", (unsigned)(cell_sum_mV / 1000), (unsigned)(cell_sum_mV % 1000),
-          (unsigned)datalayer_battery->info.number_of_cells);
+  sprintf(buf, "%u.%03u V (%u cells seen)", (unsigned)(cell_sum_mV / 1000), (unsigned)(cell_sum_mV % 1000),
+          (unsigned)seen_cell_count);
   ret += buf;
   ret += "<br>B042 pack voltage: ";
   if (pid_pack_voltage_raw == 0xFFFF) {
@@ -521,8 +526,15 @@ void MgGen1Battery::handle_incoming_can_frame(CAN_frame rx_frame) {
     case 0x3BE:
       // Per-cell voltages and temps
       cell_id = rx_frame.data.u8[5];
+      v = 1000 + ((rx_frame.data.u8[2] << 8) | rx_frame.data.u8[3]);
+      if (cell_id < MAX_AMOUNT_CELLS) {
+        // Keep every cell for the cell-sum check, whatever the detected cell count.
+        seen_cell_mV[cell_id] = v < 10000 ? v : 0;
+        if (cell_id + 1 > seen_cell_count) {
+          seen_cell_count = cell_id + 1;
+        }
+      }
       if (cell_id < datalayer_battery->info.number_of_cells) {
-        v = 1000 + ((rx_frame.data.u8[2] << 8) | rx_frame.data.u8[3]);
         datalayer_battery->status.cell_voltages_mV[cell_id] = v < 10000 ? v : 0;
         // cell temperature is rx_frame.data.u8[1]-40 but we don't use it
       }
@@ -687,10 +699,7 @@ uint16_t MgGen1Battery::handle_pid(uint16_t pid, uint32_t value, const uint8_t* 
       if (length >= 2) {
         pid_pack_voltage_raw = (data[0] << 8) | data[1];
         // Log both diagnostic voltages and the cell sum together for comparison.
-        uint32_t cell_sum_mV = 0;
-        for (int n = 0; n < datalayer_battery->info.number_of_cells && n < MAX_AMOUNT_CELLS; n++) {
-          cell_sum_mV += datalayer_battery->status.cell_voltages_mV[n];
-        }
+        uint32_t cell_sum_mV = seen_cell_sum_mV();
         logging.printf("[MG] Voltages: B042 pack %u.%02u V, B041 bus %u.%02u V, cell sum %u.%03u V, 3AC %u.%u V\n",
                        (unsigned)(pid_pack_voltage_raw / 4), (unsigned)((pid_pack_voltage_raw % 4) * 25),
                        (unsigned)(pid_bus_voltage_raw / 4), (unsigned)((pid_bus_voltage_raw % 4) * 25),

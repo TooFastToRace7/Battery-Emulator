@@ -80,6 +80,12 @@ class MgGen1Battery : public UdsCanBattery {
   uint16_t pid_bus_voltage_raw = 0xFFFF;
   uint16_t pid_pack_voltage_raw = 0xFFFF;
 
+  // Every cell voltage seen on 0x3BE, independent of the detected cell count, so the
+  // cell sum is right even before (or without) battery type identification.
+  uint16_t seen_cell_mV[MAX_AMOUNT_CELLS] = {0};
+  uint16_t seen_cell_count = 0;  // highest cell index seen + 1
+  uint32_t seen_cell_sum_mV();
+
   // Identifier PID payloads
   uint8_t pid_ecu_hw_number[8] = {0};
   uint8_t pid_f120[16] = {0};
