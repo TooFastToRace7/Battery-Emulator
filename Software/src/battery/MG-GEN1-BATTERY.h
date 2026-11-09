@@ -39,6 +39,8 @@ class MgGen1Battery : public UdsCanBattery {
 
   // UDS PIDs
   static const uint16_t POLL_BATTERY_SOH = 0xB061;
+  static const uint16_t POLL_BATTERY_BUS_VOLTAGE = 0xB041;   // BMS "HV battery bus voltage", raw / 4 = V
+  static const uint16_t POLL_BATTERY_PACK_VOLTAGE = 0xB042;  // BMS "HV battery voltage", raw / 4 = V
   static const uint16_t POLL_BATTERY_NSTC_SERIAL = 0xB18C;
   static const uint16_t POLL_BATTERY_ECU_HW_NUMBER = 0xF18A;
   static const uint16_t POLL_BATTERY_VIN = 0xF190;
@@ -61,7 +63,8 @@ class MgGen1Battery : public UdsCanBattery {
                                                    0xF1A2,
                                                    0xF1AA};
   // PIDs read regularly
-  static constexpr uint16_t UDS_STEADY_PID_LIST[] = {POLL_BATTERY_SOH};
+  static constexpr uint16_t UDS_STEADY_PID_LIST[] = {POLL_BATTERY_SOH, POLL_BATTERY_BUS_VOLTAGE,
+                                                     POLL_BATTERY_PACK_VOLTAGE};
 
   // Pack identifier: NSTC bytes 3-6 (0-indexed [2]-[5]) as big-endian uint32.
   static const uint32_t BATTERY_TYPE_MG_HS_PHEV = 0x46504544;    // "FPED" (0AFPED30)
@@ -72,6 +75,10 @@ class MgGen1Battery : public UdsCanBattery {
   static const uint32_t BATTERY_TYPE_MG5_69_NMC = 0x4C50454E;    // "LPEN" (05LPEN2C / 05LPEN10)
 
   uint32_t batteryType = 0;
+
+  // Diagnostic voltages read over UDS (raw value, 0.25 V per step). 0xFFFF = not read yet.
+  uint16_t pid_bus_voltage_raw = 0xFFFF;
+  uint16_t pid_pack_voltage_raw = 0xFFFF;
 
   // Identifier PID payloads
   uint8_t pid_ecu_hw_number[8] = {0};

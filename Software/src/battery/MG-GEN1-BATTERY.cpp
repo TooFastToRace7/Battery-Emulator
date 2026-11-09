@@ -206,6 +206,36 @@ String MgGen1Battery::get_uds_info_html() {
   ret += "<br>F1AA: ";
   print_chars_or_hex(buf, pid_f1aa, 5);
   ret += buf;
+
+  // Voltage comparison: BMS diagnostic voltages vs the sum of all cell voltages.
+  uint32_t cell_sum_mV = 0;
+  for (int n = 0; n < datalayer_battery->info.number_of_cells && n < MAX_AMOUNT_CELLS; n++) {
+    cell_sum_mV += datalayer_battery->status.cell_voltages_mV[n];
+  }
+  ret += "<br>Cell sum: ";
+  sprintf(buf, "%u.%03u V (%u cells)", (unsigned)(cell_sum_mV / 1000), (unsigned)(cell_sum_mV % 1000),
+          (unsigned)datalayer_battery->info.number_of_cells);
+  ret += buf;
+  ret += "<br>B042 pack voltage: ";
+  if (pid_pack_voltage_raw == 0xFFFF) {
+    ret += "not read yet";
+  } else {
+    sprintf(buf, "%u.%02u V (raw %04X)", (unsigned)(pid_pack_voltage_raw / 4),
+            (unsigned)((pid_pack_voltage_raw % 4) * 25), (unsigned)pid_pack_voltage_raw);
+    ret += buf;
+  }
+  ret += "<br>B041 bus voltage: ";
+  if (pid_bus_voltage_raw == 0xFFFF) {
+    ret += "not read yet";
+  } else {
+    sprintf(buf, "%u.%02u V (raw %04X)", (unsigned)(pid_bus_voltage_raw / 4),
+            (unsigned)((pid_bus_voltage_raw % 4) * 25), (unsigned)pid_bus_voltage_raw);
+    ret += buf;
+  }
+  ret += "<br>3AC voltage: ";
+  sprintf(buf, "%u.%u V", (unsigned)(datalayer_battery->status.voltage_dV / 10),
+          (unsigned)(datalayer_battery->status.voltage_dV % 10));
+  ret += buf;
   ret += "<br>";
 
   return ret;
@@ -647,6 +677,27 @@ uint16_t MgGen1Battery::handle_pid(uint16_t pid, uint32_t value, const uint8_t* 
   switch (pid) {
     case POLL_BATTERY_SOH:  // Battery SoH
       datalayer_battery->status.soh_pptt = value;
+      break;
+    case POLL_BATTERY_BUS_VOLTAGE:
+      if (length >= 2) {
+        pid_bus_voltage_raw = (data[0] << 8) | data[1];
+      }
+      break;
+    case POLL_BATTERY_PACK_VOLTAGE:
+      if (length >= 2) {
+        pid_pack_voltage_raw = (data[0] << 8) | data[1];
+        // Log both diagnostic voltages and the cell sum together for comparison.
+        uint32_t cell_sum_mV = 0;
+        for (int n = 0; n < datalayer_battery->info.number_of_cells && n < MAX_AMOUNT_CELLS; n++) {
+          cell_sum_mV += datalayer_battery->status.cell_voltages_mV[n];
+        }
+        logging.printf("[MG] Voltages: B042 pack %u.%02u V, B041 bus %u.%02u V, cell sum %u.%03u V, 3AC %u.%u V\n",
+                       (unsigned)(pid_pack_voltage_raw / 4), (unsigned)((pid_pack_voltage_raw % 4) * 25),
+                       (unsigned)(pid_bus_voltage_raw / 4), (unsigned)((pid_bus_voltage_raw % 4) * 25),
+                       (unsigned)(cell_sum_mV / 1000), (unsigned)(cell_sum_mV % 1000),
+                       (unsigned)(datalayer_battery->status.voltage_dV / 10),
+                       (unsigned)(datalayer_battery->status.voltage_dV % 10));
+      }
       break;
 
     case POLL_BATTERY_NSTC_SERIAL:
